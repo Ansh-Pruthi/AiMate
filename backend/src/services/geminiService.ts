@@ -1,6 +1,9 @@
 import { getGeminiModel } from "../config/gemini";
 import { IGeminiMessage } from "../types";
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 export class GeminiError extends Error {
   public statusCode: number;
   public isOperational: boolean;
@@ -28,47 +31,55 @@ export async function* streamGeminiResponse(
   history: IGeminiMessage[],
   newUserMessage: string,
   modelName: string = "gemini-2.0-flash",
+  retries: number = 3,
 ): AsyncGenerator<string> {
   const model = getGeminiModel(modelName);
-
-  /**
-   * Separate history from current message
-   * Gemini SDK: history = all previous turns, sendMessage = current turn
-   */
   const chat = model.startChat({ history });
 
-  try {
-    const result = await chat.sendMessageStream(newUserMessage);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await chat.sendMessageStream(newUserMessage);
 
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) {
-        yield text;
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) yield text;
       }
+
+      return; // success — exit the retry loop
+    } catch (error) {
+      if (error instanceof Error) {
+        const is429 =
+          error.message.includes("quota") ||
+          error.message.includes("429") ||
+          error.message.includes("TooManyRequests");
+
+        if (is429 && attempt < retries) {
+          const waitMs = attempt * 10000; // 10s, 20s, 30s
+          console.warn(
+            `⚠️  Gemini rate limited. Retry ${attempt}/${retries} in ${waitMs / 1000}s...`,
+          );
+          yield `\n\n_Rate limited, retrying in ${waitMs / 1000} seconds..._\n\n`;
+          await sleep(waitMs);
+          continue; // retry
+        }
+
+        if (is429) {
+          throw new GeminiError(
+            "Gemini API is currently rate limited. Please wait a moment and try again.",
+            429,
+          );
+        }
+
+        if (error.message.includes("SAFETY")) {
+          throw new GeminiError(
+            "Your message was blocked by safety filters.",
+            400,
+          );
+        }
+        throw new GeminiError(`Gemini API error: ${error.message}`, 500);
+      }
+      throw new GeminiError("Unknown error from Gemini API", 500);
     }
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message.includes("SAFETY")) {
-        throw new GeminiError(
-          "Your message was blocked by safety filters. Please rephrase.",
-          400,
-        );
-      }
-      if (error.message.includes("RECITATION")) {
-        throw new GeminiError(
-          "Response blocked due to recitation policy.",
-          400,
-        );
-      }
-      if (error.message.includes("quota") || error.message.includes("429")) {
-        throw new GeminiError(
-          "API rate limit reached. Please try again later.",
-          429,
-        );
-      }
-      throw new GeminiError(`Gemini API error: ${error.message}`, 500);
-    }
-    throw new GeminiError("Unknown error from Gemini API", 500);
   }
 }
 

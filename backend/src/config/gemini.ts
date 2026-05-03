@@ -31,7 +31,7 @@ export const SYSTEM_PROMPT = `You are a helpful, accurate, and concise AI assist
 - If you don't know something, say so honestly
 - Never make up facts or hallucinate information`
 
-export const getGeminiModel = (modelName: string = 'gemini-2.0-flash') => {
+export const getGeminiModel = (modelName: string = 'gemini-2.5-flash') => {
   return genAI.getGenerativeModel({
     model: modelName,
     safetySettings: SAFETY_SETTINGS,

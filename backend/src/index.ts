@@ -7,6 +7,8 @@ import { healthRouter } from "./routes/healthRoutes";
 import authRoutes from './routes/authRoutes'
 import chatRoutes from './routes/chatRoutes';
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
@@ -20,9 +22,32 @@ app.use(
   }),
 );
 
+app.use(helmet());
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser()); 
+
+// Global rate limit — 100 requests per 15 min per IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Strict limit on auth routes — prevent brute force
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many login attempts, try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(globalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // Routes
 app.use("/api/health", healthRouter);

@@ -37,7 +37,7 @@ export interface IGeminiMessage {
 
 export interface ICreateConversationInput {
   title?: string,
-  model?: string
+  model?: 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
 }
 
 export interface ISendMessageInput {
