@@ -1,11 +1,14 @@
 // src/pages/ChatPage.tsx
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { MessageList } from '../components/chat/MessageList';
 import { ChatInput } from '../components/chat/ChatInput';
 import { useChat } from '../hooks/useChat';
 
 export const ChatPage = () => {
+  const { id } = useParams<{ id: string }>();     // reads /chat/:id
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const {
@@ -22,17 +25,23 @@ export const ChatPage = () => {
     startNewConversation,
     sendMessage,
     deleteConversation,
-  } = useChat();
+  } = useChat(navigate);                          // ← pass navigate in
 
-  // Load conversations on mount
+  // Load sidebar conversations on mount
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
 
+  // If URL has an :id, load that conversation
+  useEffect(() => {
+    if (id && id !== activeConversationId) {
+      selectConversation(id);
+    }
+  }, [id]);                                       // only run when URL id changes
+
   return (
     <div className="flex h-screen bg-[#212121] text-white overflow-hidden">
 
-      {/* Sidebar */}
       <Sidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
@@ -44,7 +53,6 @@ export const ChatPage = () => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Main area */}
       <main className="flex flex-1 flex-col overflow-hidden">
 
         {/* Mobile top bar */}
@@ -57,7 +65,7 @@ export const ChatPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="text-sm font-medium text-gray-300">
+          <span className="truncate text-sm font-medium text-gray-300">
             {activeConversationId
               ? conversations.find((c) => c.id === activeConversationId)?.title ?? 'Chat'
               : 'New Chat'}
@@ -90,11 +98,7 @@ export const ChatPage = () => {
           </div>
         )}
 
-        {/* Chat input */}
-        <ChatInput
-          onSend={sendMessage}
-          isStreaming={isStreaming}
-        />
+        <ChatInput onSend={sendMessage} isStreaming={isStreaming} />
       </main>
     </div>
   );

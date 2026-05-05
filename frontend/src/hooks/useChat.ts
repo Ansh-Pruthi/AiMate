@@ -1,9 +1,11 @@
+// src/hooks/useChat.ts
 import { useState, useCallback } from 'react';
 import * as chatService from '../services/chatService';
 import { getToken } from '../utils/token';
 import type { IConversation, IMessage } from '../types';
 
-export const useChat = () => {
+// ── Accept navigate as a param so hook stays testable ─────────
+export const useChat = (navigate: (path: string) => void) => {
   const [conversations, setConversations] = useState<IConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IMessage[]>([]);
@@ -13,7 +15,6 @@ export const useChat = () => {
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string>('');
 
-  // ─── Load all conversations ──────────────────────────────────
   const loadConversations = useCallback(async () => {
     setIsLoadingConversations(true);
     try {
@@ -26,13 +27,12 @@ export const useChat = () => {
     }
   }, []);
 
-  // ─── Select a conversation + load its messages ───────────────
   const selectConversation = useCallback(async (id: string) => {
+    navigate(`/chat/${id}`);           // ← update URL
     setActiveConversationId(id);
     setMessages([]);
     setError('');
     setIsLoadingMessages(true);
-
     try {
       const { messages } = await chatService.getConversation(id);
       setMessages(messages);
@@ -41,16 +41,15 @@ export const useChat = () => {
     } finally {
       setIsLoadingMessages(false);
     }
-  }, []);
+  }, [navigate]);
 
-  // ─── Create new conversation ─────────────────────────────────
   const startNewConversation = useCallback(() => {
+    navigate('/');                     // ← go back to home
     setActiveConversationId(null);
     setMessages([]);
     setError('');
-  }, []);
+  }, [navigate]);
 
-  // ─── Send message + stream response ─────────────────────────
   const sendMessage = useCallback(
     async (content: string) => {
       if (isStreaming) return;
@@ -58,15 +57,15 @@ export const useChat = () => {
 
       let conversationId = activeConversationId;
 
-      // Auto-create conversation if none is active
       if (!conversationId) {
         try {
           const newConv = await chatService.createConversation(
-            content.slice(0, 40) // use first 40 chars as temp title
+            content.slice(0, 40)
           );
           conversationId = newConv.id;
           setActiveConversationId(newConv.id);
           setConversations((prev) => [newConv, ...prev]);
+          navigate(`/chat/${newConv.id}`);   // ← navigate to new conversation URL
         } catch {
           setError('Failed to create conversation');
           return;
@@ -102,11 +101,7 @@ export const useChat = () => {
           buffer = lines.pop() ?? '';
 
           for (const line of lines) {
-            // SSE format: "event: xxx" then "data: xxx"
-            if (line.startsWith('event: ')) {
-              // handled below via data lines
-              continue;
-            }
+            if (line.startsWith('event: ')) continue;
 
             if (line.startsWith('data: ')) {
               const rawData = line.slice(6).trim();
@@ -121,18 +116,15 @@ export const useChat = () => {
                 };
 
                 if (parsed.userMessage) {
-                  // Add user message to list
                   setMessages((prev) => [...prev, parsed.userMessage!]);
                 }
 
                 if (parsed.text) {
-                  // Append streaming chunk
                   fullContent += parsed.text;
                   setStreamingContent(fullContent);
                 }
 
                 if (parsed.fullContent !== undefined) {
-                  // Stream done — replace streaming bubble with real message
                   const aiMessage: IMessage = {
                     id: Date.now().toString(),
                     role: 'assistant',
@@ -141,8 +133,6 @@ export const useChat = () => {
                   };
                   setMessages((prev) => [...prev, aiMessage]);
                   setStreamingContent('');
-
-                  // Update conversation title + message count in sidebar
                   setConversations((prev) =>
                     prev.map((c) =>
                       c.id === conversationId
@@ -157,43 +147,38 @@ export const useChat = () => {
                 }
 
                 if (parsed.message && !parsed.fullContent) {
-                  // Error event from SSE
                   setError(parsed.message);
                   setStreamingContent('');
                 }
               } catch {
-                // Non-JSON line — skip
+                // skip non-JSON
               }
             }
           }
         }
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to send message'
-        );
+        setError(err instanceof Error ? err.message : 'Failed to send message');
         setStreamingContent('');
       } finally {
         setIsStreaming(false);
       }
     },
-    [activeConversationId, isStreaming]
+    [activeConversationId, isStreaming, navigate]
   );
 
-  // ─── Delete conversation ─────────────────────────────────────
   const deleteConversation = useCallback(
     async (id: string) => {
       try {
         await chatService.deleteConversation(id);
         setConversations((prev) => prev.filter((c) => c.id !== id));
         if (activeConversationId === id) {
-          setActiveConversationId(null);
-          setMessages([]);
+          startNewConversation();        // ← navigate to / on delete
         }
       } catch {
         setError('Failed to delete conversation');
       }
     },
-    [activeConversationId]
+    [activeConversationId, startNewConversation]
   );
 
   return {

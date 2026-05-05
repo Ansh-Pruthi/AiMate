@@ -17,6 +17,7 @@ function App() {
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<ChatPage />} />
+            <Route path="/chat/:id"  element={<ChatPage />} />
           </Route>
 
           {/* Catch all */}
