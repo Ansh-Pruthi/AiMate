@@ -1,33 +1,54 @@
 // src/pages/ChatPage.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
-import { type IConversation } from '../types';
+import { MessageList } from '../components/chat/MessageList';
+import { ChatInput } from '../components/chat/ChatInput';
+import { useChat } from '../hooks/useChat';
 
 export const ChatPage = () => {
-  const [conversations] = useState<IConversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const {
+    conversations,
+    activeConversationId,
+    messages,
+    isLoadingConversations,
+    isLoadingMessages,
+    isStreaming,
+    streamingContent,
+    error,
+    loadConversations,
+    selectConversation,
+    startNewConversation,
+    sendMessage,
+    deleteConversation,
+  } = useChat();
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   return (
     <div className="flex h-screen bg-[#212121] text-white overflow-hidden">
 
-      {/* Sidebar — receives open state + close handler */}
+      {/* Sidebar */}
       <Sidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
-        onSelectConversation={setActiveConversationId}
-        onNewConversation={() => setActiveConversationId(null)}
-        isLoadingConversations={false}
+        onSelectConversation={selectConversation}
+        onNewConversation={startNewConversation}
+        onDeleteConversation={deleteConversation}
+        isLoadingConversations={isLoadingConversations}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* ── Main chat area ───────────────────────────────────── */}
+      {/* Main area */}
       <main className="flex flex-1 flex-col overflow-hidden">
 
-        {/* ── Mobile top bar ──────────────────────────────────── */}
+        {/* Mobile top bar */}
         <div className="flex items-center gap-3 border-b border-[#2f2f2f] px-4 py-3 md:hidden">
-          {/* Hamburger button */}
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="rounded-lg p-1.5 text-gray-400 hover:bg-[#2f2f2f] hover:text-white"
@@ -37,22 +58,43 @@ export const ChatPage = () => {
             </svg>
           </button>
           <span className="text-sm font-medium text-gray-300">
-            {activeConversationId ? 'Chat' : 'New Chat'}
+            {activeConversationId
+              ? conversations.find((c) => c.id === activeConversationId)?.title ?? 'Chat'
+              : 'New Chat'}
           </span>
         </div>
 
-        {/* ── Chat content ────────────────────────────────────── */}
-        <div className="flex flex-1 flex-col items-center justify-center px-4">
-          <div className="text-center">
+        {/* Error banner */}
+        {error && (
+          <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Messages or empty state */}
+        {activeConversationId || messages.length > 0 || isStreaming ? (
+          <MessageList
+            messages={messages}
+            streamingContent={streamingContent}
+            isStreaming={isStreaming}
+            isLoadingMessages={isLoadingMessages}
+          />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-4">
             <h2 className="text-xl font-semibold text-white sm:text-2xl">
               What can I help with?
             </h2>
             <p className="mt-2 text-sm text-gray-500">
-              Select a conversation or start a new one
+              Type a message below to start
             </p>
           </div>
-        </div>
+        )}
 
+        {/* Chat input */}
+        <ChatInput
+          onSend={sendMessage}
+          isStreaming={isStreaming}
+        />
       </main>
     </div>
   );
